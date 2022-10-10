@@ -15,11 +15,15 @@ import time
 import asyncio
 #import mediapipe as mp
 from pedestrian import pedestrian
+from pedes_detect.pdec import pdetector
 import gdown
 
 import threading
 
+# use camera or video
 use_camera = False
+
+# enable usb or not
 enable_usb = False
 
 if enable_usb:
@@ -103,66 +107,6 @@ def priority(x, y):
 ##########################
 
 
-# These are NMS and Confidence Thresholds used in pedestrian_detection
-
-NMS_THRESHOLD = 0.3
-MIN_CONFIDENCE = 0.7
-
-
-def pedestrian_detection(image, model, layer_name, personidz=0):
-    # image.shape returns as tuple of rows columns color channels
-    (H, W) = image.shape[:2]
-    results = []  # we store our predictions
-
-    blob = cv2.dnn.blobFromImage(image, 1 / 255.0, (416, 416), swapRB=True,
-                                 crop=False)  # we create a blob... scale evryy pixel intensity by 1/255, make image of standard size, swap RB channels and dont crop
-    model.setInput(blob)  # model is yolo trained on yolomini dataset
-    layerOutputs = model.forward(layer_name)  # output layer; list of list of detections
-
-    boxes = []
-    centroids = []
-    confidences = []
-
-    # above here we store desired output
-
-    for output in layerOutputs:  # we loop through the detections
-        for detection in output:  # for each detection
-
-            scores = detection[
-                     5:]  # class probabilities (in logits format) begin with index 5, detection= [x,y,h,w,box_score,_,_,_.. diff objects]
-            classID = np.argmax(scores)  # arg of max scores
-            confidence = scores[classID]  # score of most likely object
-
-            if (classID == personidz) and confidence > MIN_CONFIDENCE:  # personidz=0 , correrponds to a person
-
-                box = detection[0:4] * np.array([W, H, W, H])
-                (centerX, centerY, width, height) = box.astype("int")
-
-                x = int(centerX - (width / 2))
-                y = int(centerY - (height / 2))
-
-                boxes.append([x, y, int(width), int(height)])
-                centroids.append((centerX, centerY))
-                confidences.append(float(confidence))
-    # apply non-maxima suppression to suppress weak, overlapping
-    # bounding boxes
-    idzs = cv2.dnn.NMSBoxes(boxes, confidences, MIN_CONFIDENCE, NMS_THRESHOLD)
-    # ensure at least one detection exists
-    if len(idzs) > 0:
-        # loop over the indexes we are keeping
-        for i in idzs.flatten():
-            # extract the bounding box coordinates
-            (x, y) = (boxes[i][0], boxes[i][1])
-            (w, h) = (boxes[i][2], boxes[i][3])
-            # update our results list to consist of the person
-            # prediction probability, bounding box coordinates,
-            # and the centroid
-            res = (confidences[i], (x, y, x + w, y + h), centroids[i])
-            results.append(res)
-    # return the list of results
-    return results
-
-
 gaze_object = status((0, 0), (0, 0))
 
 
@@ -174,27 +118,7 @@ if enable_usb:
 
 # global movementcounter
 
-def gaze(status):
-    if not enable_usb:
-        return
-    if (abs(status.prev_angle[0] - status.angle[0]) > 3):
-        print("moving from", status.prev_angle, " to ", status.angle)
-        # update movements
-        # movementcounter+=1
-        # print("movement counter: ", movementcounter)
-        eyes.move_vertical(status.angle[0])
-        eyes.move_horizontal(status.angle[1])
-        eyes2.move_vertical(status.angle[0])
-        eyes2.move_horizontal(status.angle[1])
-        status.prev_angle = status.angle
 
-    else:
-        print("Send zero movement")
-        eyes.move_vertical(status.prev_angle[0])
-        eyes.move_horizontal(status.prev_angle[1])
-        eyes2.move_vertical(status.prev_angle[0])
-        eyes2.move_horizontal(status.prev_angle[1])
-        status.prev_angle = status.angle
 
 
 def move_timer():
@@ -222,20 +146,7 @@ def move_timer():
 def main():
     main_start = time.time()
     # Setting up Yolov4-tiny model for pedestrian Detection
-    labelsPath = "coco.names"
-    LABELS = open(labelsPath).read().strip().split("\n")
-    if not os.path.exists("./yolov4-tiny.weights"):
-        id = "1-JOrNS3i1MrRvJZ19siG0nGvoSgtfZRt"
-        output = "yolov4-tiny.weights"
-        gdown.download(id=id, output=output, quiet=False)
-    weights_path = "yolov4-tiny.weights"
-    config_path = "yolov4-tiny.cfg"
-    model = cv2.dnn.readNetFromDarknet(config_path, weights_path)
-    # use CUDA (support now)
-    model.setPreferableBackend(cv2.dnn.DNN_BACKEND_CUDA)
-    model.setPreferableTarget(cv2.dnn.DNN_TARGET_CUDA)
-    layer_name = model.getLayerNames()
-    layer_name = [layer_name[i - 1] for i in model.getUnconnectedOutLayers()]
+    pdec = pdetector()
 
     # video input
     # cap = cv2.VideoCapture("pre_record_test_video_01.mp4")
@@ -266,7 +177,7 @@ def main():
         image = imutils.resize(image, width=700)
         gaze_direction = (int(image.shape[1] / 2), int(image.shape[0] / 2))
         t0 = time.time()
-        results = pedestrian_detection(image, model, layer_name, personidz=LABELS.index("person"))
+        results = pdec(image)#pedestrian_detection
         t1 = time.time()
         print("detection time: ", t1-t0)
 
