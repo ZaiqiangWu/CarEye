@@ -14,7 +14,7 @@ import math
 import time
 import asyncio
 #import mediapipe as mp
-from pedestrian import pedestrian
+from pedestrian import pedestrian, pedes_container
 from pedes_detect.pdec import pdetector
 import gdown
 
@@ -134,28 +134,6 @@ def lerp(location, image):
 ###########################
 
 
-def issimilar(x, y):
-    # This function helps to track pedestrians in different frames. If two pedestrians (one in previous frame another in subsequent frame)
-    # are at small distance in the image, they are the same.
-    distance = math.sqrt(
-        (x.location[0] - y.location[0]) * (x.location[0] - y.location[0]) + (x.location[1] - y.location[1]) * (
-                x.location[1] - y.location[1]))
-    if distance > 10:
-        return False
-    else:
-        return True
-
-
-##########################
-def priority(x, y):
-    # We prioritize the pedestrian closer to us.
-    # Usually the pedestrians who were closer, in the image, they are slightly below than those who are far.
-    s1 = x.location[0] * x.location[1]
-    s2 = y.location[0] * y.location[1]
-    if s1 >= s2:
-        return True
-    else:
-        return False
 
 
 ##########################
@@ -198,6 +176,8 @@ def main():
     if enable_usb:
         move_timer()
 
+    p_container=pedes_container()
+
     while True:
         print("-------------------------------------------------------")
         time_loopstart = time.time()
@@ -211,108 +191,24 @@ def main():
         results = pdec(image)#pedestrian_detection
         t1 = time.time()
         print("detection time: ", t1-t0)
+        for res in results:
+            cv2.rectangle(image, (res[1][0], res[1][1]), (res[1][2], res[1][3]), (0, 255, 0))
 
-        for i in range(len(results)):
-            C = A  # c=[p1]
-            location = (results[i][2][0], results[i][2][1])
-            size = (results[i][1][2] - results[i][1][0], results[i][1][3] - results[i][1][1])
-            confidence = results[i][0]
-            new_pedestrian = pedestrian(location, size, confidence)
-            focus = new_pedestrian
-            focus_top_left = (int(focus.location[0] - size[0] / 2), int(focus.location[1] - size[1] / 2))
-            cropped_pedestrian = image[focus_top_left[1]:focus_top_left[1] + focus.size[1], focus_top_left[0]:focus_top_left[0] + focus.size[0]]
+        p_container.update(results)
 
-
-
-            for res in results:
-                cv2.rectangle(image, (res[1][0], res[1][1]), (res[1][2], res[1][3]), (0, 255, 0))
-
-                if blur_face:
-                    image = blur_face(image,res)
-
-            if (len(A) == 0):
-                A.append(new_pedestrian) # A -> p list
-                B.append(0)
-
-            for i in range(len(A)):# check existing pdes list and find correspondence
-                if issimilar(new_pedestrian, A[i]):
-                    if (new_pedestrian.superior):
-                        A[i].prioritize(True)
-                    else:
-                        A[i].prioritize(False)
-                    A[i].updategazetime()
-                    A[i].updatetime()
-                    A[i].add_location(location)
-                    if abs(lerp(new_pedestrian.eyes, image)[0] - lerp(A[i].eyes, image)[0]) > 5:
-                        A[i].update_eyes(new_pedestrian.eyes)
-                    B.append(i)
-                    break
-                if (i == len(A) - 1):
-                    # new pedestrian?
-                    B.append(len(A))
-                    A.append(new_pedestrian)
-        C = []
-        for i in range(len(B)):
-            C.append(A[B[i]])
-        A = C
-
-        # sort according to priority
-
-        if len(A) > 1:
-            for i in range(1, len(A)):
-                key = A[i]
-                j = i - 1
-                while j >= 0 and priority(key, A[j]):
-                    A[j + 1] = A[j]
-                    j -= 1
-                    A[j + 1] = key
-
+        A=p_container.plist
         for i in range(len(A)):
-            if A[i].superior and A[i].gaze == 0:
-                A[i].changegazestatus(1)
-                A[i].addstarttime()
-                if (not isinstance(focus.eyes, float)):
-                    gaze_direction = focus.eyes
-                    image = cv2.circle(image, focus.eyes, 5, (0, 0, 255), 5, cv2.FILLED)
-                break
-            if (A[i].gaze == 1):
-                if (A[i].gazetime > 10):
-                    A[i].changegazestatus(0)
-                    A[i].gazetime = 0
-                    A[(i + 1) % len(A)].changegazestatus(1)
-                    A[(i + 1) % len(A)].addstarttime()
-                    focus = A[(i + 1) % len(A)]
-                    if (not isinstance(focus.eyes, float)):
-                        gaze_direction = focus.eyes
-                        image = cv2.circle(image, focus.eyes, 5, (0, 0, 255), 5, cv2.FILLED)
-                    break
-                else:
-                    A[i].updategazetime()
-                    focus = A[i]
-                    if (not isinstance(focus.eyes, float)):
-                        gaze_direction = focus.eyes
-                        image = cv2.circle(image, focus.eyes, 5, (0, 0, 255), 5, cv2.FILLED)
-                    break
-
-            if (i == len(A) - 1):
-                focus = A[0]
-                A[0].changegazestatus(1)
-                A[0].addstarttime()
-                if (not isinstance(focus.eyes, float)):
-                    gaze_direction = focus.eyes
-                    image = cv2.circle(image, focus.eyes, 5, (0, 0, 255), 5, cv2.FILLED)
-                break
-
-        count = 1
-        for i in range(len(A)):
-            text = str(count)
+            text = str(i+1)
             font = cv2.FONT_HERSHEY_SIMPLEX
             org = (A[i].location[0], A[i].location[1])
             fontScale = 0.5
             thickness = 1
             color = (0, 0, 255)
             cv2.putText(image, text, org, font, fontScale, color, thickness, cv2.LINE_AA, False)
-            count = count + 1
+
+
+        if p_container.any():
+            gaze_direction=p_container.get_eye_direction()
 
         height = image.shape[0]
         width = image.shape[1]
