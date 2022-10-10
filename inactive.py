@@ -121,27 +121,6 @@ if enable_usb:
 
 
 
-def move_timer():
-    status = gaze_object
-    if (abs(status.prev_angle[0] - status.angle[0]) > 3):
-        print("moving from", status.prev_angle, " to ", status.angle)
-        # update movements
-        # movementcounter+=1
-        # print("movement counter: ", movementcounter)
-        eyes.move_vertical(status.angle[0])
-        eyes.move_horizontal(status.angle[1])
-        eyes2.move_vertical(status.angle[0])
-        eyes2.move_horizontal(status.angle[1])
-        status.prev_angle = status.angle
-    else:
-        print("Send zero movement")
-        eyes.move_vertical(status.prev_angle[0])
-        eyes.move_horizontal(status.prev_angle[1])
-        eyes2.move_vertical(status.prev_angle[0])
-        eyes2.move_horizontal(status.prev_angle[1])
-        status.prev_angle = status.angle
-    timer = threading.Timer(0.05, move_timer)
-    timer.start()
 
 def main():
     main_start = time.time()
@@ -384,3 +363,27 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+def move_timer():
+    status = gaze_object
+    if (abs(status.prev_angle[0] - status.angle[0]) > 3):
+        print("moving from", status.prev_angle, " to ", status.angle)
+        # update movements
+        # movementcounter+=1
+        # print("movement counter: ", movementcounter)
+        eyes.move_vertical(status.angle[0])
+        eyes.move_horizontal(status.angle[1])
+        eyes2.move_vertical(status.angle[0])
+        eyes2.move_horizontal(status.angle[1])
+        status.prev_angle = status.angle
+    else:
+        print("Send zero movement")
+        eyes.move_vertical(status.prev_angle[0])
+        eyes.move_horizontal(status.prev_angle[1])
+        eyes2.move_vertical(status.prev_angle[0])
+        eyes2.move_horizontal(status.prev_angle[1])
+        status.prev_angle = status.angle
+    timer = threading.Timer(0.05, move_timer)
+    timer.start()
