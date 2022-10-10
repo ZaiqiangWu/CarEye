@@ -26,10 +26,64 @@ use_camera = False
 # enable usb or not
 enable_usb = False
 
+#blur face or not
+blur_face = False
+
 if enable_usb:
     import RoboticEye2
 
+def draw_eyes(x,y,image):
+    # cv2.rectangle(image,(int(0.35*image.shape[1]),int(0.80*image.shape[0])), (int(0.65*image.shape[1]),image.shape[0]),(255,255,255),-1)
+    cv2.putText(image, "Inactive Mode", (int(0.07 * image.shape[1]), int(0.93 * image.shape[0])),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA, False)
+    cv2.circle(image, (int(0.43 * image.shape[1]), int(0.90 * image.shape[0])), 30, (0, 0, 0), 2)
+    cv2.circle(image, (int(0.43 * image.shape[1]), int(0.90 * image.shape[0])), 28, (255, 255, 255), -1)
+    cv2.circle(image, (int(0.43 * image.shape[1] - x), int(0.90 * image.shape[0] + y)), 15, (0, 0, 0), -1)
+    cv2.circle(image, (int(0.56 * image.shape[1]), int(0.90 * image.shape[0])), 30, (0, 0, 0), 2)
+    cv2.circle(image, (int(0.56 * image.shape[1]), int(0.90 * image.shape[0])), 28, (255, 255, 255), -1)
+    cv2.circle(image, (int(0.56 * image.shape[1] - x), int(0.90 * image.shape[0] + y)), 15, (0, 0, 0), -1)
 
+def move_timer():
+    status = gaze_object
+    if (abs(status.prev_angle[0] - status.angle[0]) > 3):
+        print("moving from", status.prev_angle, " to ", status.angle)
+        # update movements
+        # movementcounter+=1
+        # print("movement counter: ", movementcounter)
+        eyes.move_vertical(status.angle[0])
+        eyes.move_horizontal(status.angle[1])
+        eyes2.move_vertical(status.angle[0])
+        eyes2.move_horizontal(status.angle[1])
+        status.prev_angle = status.angle
+    else:
+        print("Send zero movement")
+        eyes.move_vertical(status.prev_angle[0])
+        eyes.move_horizontal(status.prev_angle[1])
+        eyes2.move_vertical(status.prev_angle[0])
+        eyes2.move_horizontal(status.prev_angle[1])
+        status.prev_angle = status.angle
+    timer = threading.Timer(0.05, move_timer)
+    timer.start()
+
+def blur_face(image, res):
+    # to blur the pedestrians (used for video demo):
+    y1 = res[1][1]
+    y2 = int(res[1][1] + 0.3 * (res[1][3] - res[1][1]))
+    x1 = int(res[1][0] + 0.2 * (res[1][2] - res[1][0]))
+    x2 = int(res[1][0] + 0.9 * (res[1][2] - res[1][0]))
+    if (x1 < 0):
+        x1 = 0
+    if (x2 < 0):
+        x2 = 0
+    if (y1 < 0):
+        y1 = 0
+    if (y2 < 0):
+        y2 = 0
+    ROI = image[y1:y2, x1:x2]
+    if (y2 > y1 and x2 > x1):
+        blur = cv2.GaussianBlur(ROI, (5, 5), 0)
+        image[y1:y2, x1:x2] = blur
+    return image
 
 def RobobicEyeInit():
     eyes = RoboticEye2.RoboticEye2(port="/dev/ttyUSB0")
@@ -99,9 +153,9 @@ def priority(x, y):
     s1 = x.location[0] * x.location[1]
     s2 = y.location[0] * y.location[1]
     if s1 >= s2:
-        return x
+        return True
     else:
-        return y
+        return False
 
 
 ##########################
@@ -124,16 +178,14 @@ if enable_usb:
 
 def main():
     main_start = time.time()
-    # Setting up Yolov4-tiny model for pedestrian Detection
     pdec = pdetector()
-
     # video input
     # cap = cv2.VideoCapture("pre_record_test_video_01.mp4")
     if not use_camera:
         cap = cv2.VideoCapture("test.mp4")
     else:
         cap = cv2.VideoCapture(0)  # To Test using a webcam
-    cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('H', '2', '6', '4'))
+    #cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('H', '2', '6', '4'))
 
     A = []
     # for saving time per frame
@@ -165,41 +217,24 @@ def main():
             location = (results[i][2][0], results[i][2][1])
             size = (results[i][1][2] - results[i][1][0], results[i][1][3] - results[i][1][1])
             confidence = results[i][0]
-            new_pedestrian = pedestrian(location, size, confidence, (location[0], int(location[1] - size[1] * 0.3)))
+            new_pedestrian = pedestrian(location, size, confidence)
             focus = new_pedestrian
             focus_top_left = (int(focus.location[0] - size[0] / 2), int(focus.location[1] - size[1] / 2))
-            cropped_pedestrian = image[focus_top_left[1]:focus_top_left[1] + focus.size[1],
-                                 focus_top_left[0]:focus_top_left[0] + focus.size[0]]
-            # TODO detect 3 frame, if 3f have wave hand, then detect
+            cropped_pedestrian = image[focus_top_left[1]:focus_top_left[1] + focus.size[1], focus_top_left[0]:focus_top_left[0] + focus.size[0]]
 
 
 
             for res in results:
                 cv2.rectangle(image, (res[1][0], res[1][1]), (res[1][2], res[1][3]), (0, 255, 0))
-                """
-                #to blur the pedestrians (used for video demo):
-                y1=res[1][1]
-                y2=int(res[1][1]+0.3*(res[1][3]-res[1][1]))
-                x1=int(res[1][0]+0.2*(res[1][2]-res[1][0]))
-                x2=int(res[1][0]+0.9*(res[1][2]-res[1][0]))
-                if (x1<0):
-                    x1=0
-                if (x2<0):
-                    x2=0
-                if (y1<0):
-                    y1=0
-                if (y2<0):
-                    y2=0
-                ROI = image[y1:y2, x1:x2]
-                if (y2>y1 and x2>x1):
-                    blur = cv2.GaussianBlur(ROI,(5,5),0)
-                    image[y1:y2, x1:x2]=blur
-                """
+
+                if blur_face:
+                    image = blur_face(image,res)
+
             if (len(A) == 0):
-                A.append(new_pedestrian)
+                A.append(new_pedestrian) # A -> p list
                 B.append(0)
 
-            for i in range(len(A)):
+            for i in range(len(A)):# check existing pdes list and find correspondence
                 if issimilar(new_pedestrian, A[i]):
                     if (new_pedestrian.superior):
                         A[i].prioritize(True)
@@ -227,7 +262,7 @@ def main():
             for i in range(1, len(A)):
                 key = A[i]
                 j = i - 1
-                while j >= 0 and priority(key, A[j]) == 1:
+                while j >= 0 and priority(key, A[j]):
                     A[j + 1] = A[j]
                     j -= 1
                     A[j + 1] = key
@@ -286,15 +321,9 @@ def main():
         if (len(A) == 0):
             x = 0
             y = 0
-        # cv2.rectangle(image,(int(0.35*image.shape[1]),int(0.80*image.shape[0])), (int(0.65*image.shape[1]),image.shape[0]),(255,255,255),-1)
-        cv2.putText(image, "Inactive Mode", (int(0.07 * image.shape[1]), int(0.93 * image.shape[0])),
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA, False)
-        cv2.circle(image, (int(0.43 * image.shape[1]), int(0.90 * image.shape[0])), 30, (0, 0, 0), 2)
-        cv2.circle(image, (int(0.43 * image.shape[1]), int(0.90 * image.shape[0])), 28, (255, 255, 255), -1)
-        cv2.circle(image, (int(0.43 * image.shape[1] - x), int(0.90 * image.shape[0] + y)), 15, (0, 0, 0), -1)
-        cv2.circle(image, (int(0.56 * image.shape[1]), int(0.90 * image.shape[0])), 30, (0, 0, 0), 2)
-        cv2.circle(image, (int(0.56 * image.shape[1]), int(0.90 * image.shape[0])), 28, (255, 255, 255), -1)
-        cv2.circle(image, (int(0.56 * image.shape[1] - x), int(0.90 * image.shape[0] + y)), 15, (0, 0, 0), -1)
+
+        draw_eyes(x,y,image)
+
 
         # A is the array of pedestrian objects!
         # Do the below task in the above loop!
@@ -309,8 +338,7 @@ def main():
         else:
             gaze_object.angle = lerp(gaze_direction, image)
             gaze_object.pedestrian_found = True
-        cv2.putText(image, str(gaze_object.angle), gaze_direction, cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1,
-                    cv2.LINE_AA, False)
+        cv2.putText(image, str(gaze_object.angle), gaze_direction, cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA, False)
         # cv2.resizeWindow("Detection", 1920, 1080)
         # cv2.resize(image,(1920,1080))
         cv2.namedWindow("Detection", 0)
@@ -365,25 +393,3 @@ if __name__ == '__main__':
     main()
 
 
-
-def move_timer():
-    status = gaze_object
-    if (abs(status.prev_angle[0] - status.angle[0]) > 3):
-        print("moving from", status.prev_angle, " to ", status.angle)
-        # update movements
-        # movementcounter+=1
-        # print("movement counter: ", movementcounter)
-        eyes.move_vertical(status.angle[0])
-        eyes.move_horizontal(status.angle[1])
-        eyes2.move_vertical(status.angle[0])
-        eyes2.move_horizontal(status.angle[1])
-        status.prev_angle = status.angle
-    else:
-        print("Send zero movement")
-        eyes.move_vertical(status.prev_angle[0])
-        eyes.move_horizontal(status.prev_angle[1])
-        eyes2.move_vertical(status.prev_angle[0])
-        eyes2.move_horizontal(status.prev_angle[1])
-        status.prev_angle = status.angle
-    timer = threading.Timer(0.05, move_timer)
-    timer.start()
