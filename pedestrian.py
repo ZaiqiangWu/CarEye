@@ -62,7 +62,7 @@ class pedes_container:
 			self.focus_id = (self.focus_id + 1) % len(self.plist)
 			self.last_time = self.current_time
 		if self.focus_id>=len(self.plist):
-			self.focus_id=len(self.plist)-1
+			self.focus_id=0
 		return self.plist[self.focus_id].eyes
 
 	def any(self):
