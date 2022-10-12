@@ -21,10 +21,10 @@ import gdown
 import threading
 
 # use camera or video
-use_camera = False
+use_camera = True
 
 # enable usb or not
-enable_usb = False
+enable_usb = True
 
 #blur face or not
 blur_face = False
