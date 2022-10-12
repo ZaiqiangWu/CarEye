@@ -16,7 +16,7 @@ import asyncio
 #import mediapipe as mp
 from pedestrian import pedestrian, pedes_container
 from pedes_detect.pdec import pdetector
-import gdown
+
 
 import threading
 
